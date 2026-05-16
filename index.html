@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Enjoy — Trail Walker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  /* ===== Reset & Base ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0a0a0a; color: #e8e8e8; }
+
+  /* ===== Map ===== */
+  #map { position: absolute; inset: 0; z-index: 0; }
+  .leaflet-control-zoom { display: none !important; }
+
+  /* ===== Top Bar ===== */
+  #topBar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top));
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  #topBar > * { pointer-events: auto; }
+  #appTitle { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+  #appTitle span { color: #4CAF50; }
+  .topBtn {
+    width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.15); backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: white; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  .topBtn:active { background: rgba(255,255,255,0.3); }
+
+  /* ===== Bottom Panel ===== */
+  #bottomPanel {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: rgba(20,20,25,0.92); backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: 20px 20px 0 0;
+    padding: 16px 20px; padding-bottom: max(16px, env(safe-area-inset-bottom));
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 55vh; overflow-y: auto;
+  }
+  /* grab handle */
+  #bottomPanel::before {
+    content: ''; display: block; width: 40px; height: 4px;
+    background: rgba(255,255,255,0.25); border-radius: 4px;
+    margin: 0 auto 12px;
+  }
+
+  /* ===== IDLE STATE (not recording) ===== */
+  #idleState { text-align: center; padding: 8px 0; }
+  #idleState .greeting { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+  #idleState .greeting strong { color: rgba(255,255,255,0.8); }
+  #idleState .sub { font-size: 12px; color: rgba(255,255,255,0.35); margin-bottom: 14px; }
+  .btnStart {
+    width: 100%; padding: 16px; border: none; border-radius: 16px;
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    color: white; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;
+    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 20px rgba(76,175,80,0.35);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .btnStart:active { transform: scale(0.97); }
+  .btnStart .icon { font-size: 22px; }
+
+  /* ===== RECORDING STATE ===== */
+  #recordingState { display: none; }
+  #recordingState.active { display: block; }
+
+  .recStats {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px; margin-bottom: 12px;
+  }
+  .recStat {
+    text-align: center; padding: 10px 4px;
+    background: rgba(255,255,255,0.06); border-radius: 14px;
+  }
+  .recStat .value { font-size: 22px; font-weight: 700; color: white; }
+  .recStat .label { font-size: 10px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .recStat .unit { font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 400; margin-left: 1px; }
+
+  .recActions { display: flex; gap: 12px; }
+  .recActions button {
+    flex: 1; padding: 14px; border: none; border-radius: 14px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .recActions button:active { transform: scale(0.96); }
+  .btnFinish {
+    background: linear-gradient(135deg, #e53935 0%, #b71c1c 100%);
+    color: white; box-shadow: 0 4px 14px rgba(229,57,53,0.3);
+  }
+  .btnPause {
+    background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8);
+    flex: 0.4 !important;
+  }
+  .btnPause.paused { background: rgba(76,175,80,0.25); color: #4CAF50; }
+
+  /* ===== SUMMARY STATE (after trail) ===== */
+  #summaryState { display: none; }
+  #summaryState.active { display: block; }
+
+  .summaryTitle { font-size: 18px; font-weight: 700; margin-bottom: 12px; text-align: center; }
+  .summaryStats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .summaryStat {
+    background: rgba(255,255,255,0.06); border-radius: 14px; padding: 12px;
+    text-align: center;
+  }
+  .summaryStat .val { font-size: 20px; font-weight: 700; color: white; }
+  .summaryStat .lbl { font-size: 10px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  .summaryActions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .summaryActions button {
+    flex: 1; min-width: 100px; padding: 12px; border: none; border-radius: 14px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .summaryActions button:active { transform: scale(0.96); }
+  .btnSave {
+    background: linear-gradient(135deg, #4CAF50, #2E7D32);
+    color: white; flex: 1.5;
+  }
+  .btnDiscard { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+  .btnName { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+
+  /* ===== ELEVATION CHART ===== */
+  #elevChartWrap {
+    margin: 12px 0; background: rgba(255,255,255,0.04);
+    border-radius: 12px; padding: 8px; height: 90px; position: relative;
+  }
+  #elevChartWrap canvas { width: 100%; height: 100%; display: block; border-radius: 8px; }
+  .elevLabels {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: rgba(255,255,255,0.3); margin-top: 2px; padding: 0 4px;
+  }
+
+  /* ===== HISTORY ===== */
+  #historyState { display: none; }
+  #historyState.active { display: block; }
+  .historyHeader {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .historyHeader h2 { font-size: 18px; font-weight: 700; }
+  .historyHeader button {
+    background: none; border: none; color: rgba(255,255,255,0.5); font-size: 20px; cursor: pointer;
+  }
+
+  .historyList { max-height: 40vh; overflow-y: auto; }
+  .historyItem {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px; margin-bottom: 8px;
+    background: rgba(255,255,255,0.06); border-radius: 14px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .historyItem:active { background: rgba(255,255,255,0.1); }
+  .historyItem .hIcon {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: linear-gradient(135deg, #1B5E20, #388E3C);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .historyItem .hInfo { flex: 1; min-width: 0; }
+  .historyItem .hName { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .historyItem .hMeta { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+  .historyItem .hDist { font-size: 14px; font-weight: 600; color: #4CAF50; }
+  .historyEmpty {
+    text-align: center; padding: 40px 0; color: rgba(255,255,255,0.3);
+  }
+  .historyEmpty .big { font-size: 40px; margin-bottom: 8px; }
+
+  /* ===== Name Modal ===== */
+  #nameModal {
+    display: none; position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 30px;
+  }
+  #nameModal.active { display: flex; }
+  .nameDialog {
+    background: #1c1c1e; border-radius: 20px; padding: 24px;
+    width: 100%; max-width: 340px;
+  }
+  .nameDialog h3 { font-size: 18px; margin-bottom: 4px; }
+  .nameDialog p { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+  .nameDialog input {
+    width: 100%; padding: 14px 16px; border: none; border-radius: 12px;
+    background: rgba(255,255,255,0.1); color: white;
+    font-size: 16px; outline: none;
+  }
+  .nameDialog input::placeholder { color: rgba(255,255,255,0.3); }
+  .nameDialog .nameActions { display: flex; gap: 10px; margin-top: 14px; }
+  .nameDialog .nameActions button {
+    flex: 1; padding: 12px; border: none; border-radius: 12px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .nameDialog .nameActions .btnCancel { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); }
+  .nameDialog .nameActions .btnConfirm { background: #4CAF50; color: white; }
+
+  /* ===== Animations ===== */
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .anim-in { animation: fadeInUp 0.3s ease-out; }
+
+  /* ===== Geolocation Denied ===== */
+  #geoNotice {
+    display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 500; text-align: center; padding: 30px;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(16px);
+    border-radius: 20px; width: 280px;
+  }
+  #geoNotice .icon { font-size: 48px; margin-bottom: 10px; }
+  #geoNotice .msg { font-size: 14px; color: rgba(255,255,255,0.6); line-height: 1.5; }
+
+  /* ===== Scrollbar ===== */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ===== MAP ===== -->
+<div id="map"></div>
+
+<!-- ===== Geolocation Notice ===== -->
+<div id="geoNotice">
+  <div class="icon">📍</div>
+  <div class="msg">Please enable location access to use Enjoy. Check your browser settings.</div>
+</div>
+
+<!-- ===== TOP BAR ===== -->
+<div id="topBar">
+  <div id="appTitle"><span>En</span>joy</div>
+  <button class="topBtn" id="btnHistory" onclick="showHistory()" style="display:none;">📋</button>
+</div>
+
+<!-- ===== BOTTOM PANEL ===== -->
+<div id="bottomPanel">
+
+  <!-- IDLE -->
+  <div id="idleState" class="anim-in">
+    <div class="greeting">Ready to <strong>walk</strong> 🥾</div>
+    <div class="sub" id="elevIdle">Elevation: —</div>
+    <button class="btnStart" onclick="startRecording()">
+      <span class="icon">⏺</span> Start Trail
+    </button>
+  </div>
+
+  <!-- RECORDING -->
+  <div id="recordingState">
+    <div class="recStats">
+      <div class="recStat">
+        <div class="value" id="recDist">0.00</div>
+        <div class="label">Distance</div>
+      </div>
+      <div class="recStat">
+        <div class="value" id="recTime">00:00</div>
+        <div class="label">Duration</div>
+      </div>
+      <div class="recStat">
+        <div class="value" id="recElev">— <span class="unit">m</span></div>
+        <div class="label">Elevation</div>
+      </div>
+    </div>
+    <div class="recActions">
+      <button class="btnPause" id="btnPause" onclick="togglePause()">⏸</button>
+      <button class="btnFinish" onclick="finishTrail()">⏹ Done</button>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div id="summaryState" class="anim-in">
+    <div class="summaryTitle">🏁 Trail Complete!</div>
+    <div class="summaryStats">
+      <div class="summaryStat"><div class="val" id="sumDist">0.00 km</div><div class="lbl">Distance</div></div>
+      <div class="summaryStat"><div class="val" id="sumTime">00:00</div><div class="lbl">Duration</div></div>
+      <div class="summaryStat"><div class="val" id="sumElev">— m</div><div class="lbl">Max Elevation</div></div>
+      <div class="summaryStat"><div class="val" id="sumPace">—</div><div class="lbl">Pace</div></div>
+    </div>
+    <div id="elevChartWrap">
+      <canvas id="elevChart"></canvas>
+    </div>
+    <div class="elevLabels">
+      <span>Start</span>
+      <span>End</span>
+    </div>
+    <div class="summaryActions">
+      <button class="btnName" onclick="showNameModal()">✏️ Name</button>
+      <button class="btnDiscard" onclick="discardTrail()">🗑 Discard</button>
+      <button class="btnSave" onclick="saveTrail()">💾 Save</button>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="historyState" class="anim-in">
+    <div class="historyHeader">
+      <h2>📋 Trail History</h2>
+      <button onclick="hideHistory()">✕</button>
+    </div>
+    <div class="historyList" id="historyList"></div>
+  </div>
+</div>
+
+<!-- ===== NAME MODAL ===== -->
+<div id="nameModal">
+  <div class="nameDialog">
+    <h3>✏️ Name this trail</h3>
+    <p>Give your walk a name to remember it by.</p>
+    <input type="text" id="trailNameInput" placeholder="e.g. Lands End Loop" maxlength="40" autofocus>
+    <div class="nameActions">
+      <button class="btnCancel" onclick="hideNameModal()">Cancel</button>
+      <button class="btnConfirm" onclick="confirmName()">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  ENJOY — Trail Walker App
+// ============================================================
+
+// -------- State --------
+const STATE = {
+  recording: false,
+  paused: false,
+  trailPoints: [],       // [{lat, lng, alt, time}]
+  startTime: null,
+  watchId: null,
+  userMarker: null,
+  accuracyCircle: null,
+  trailLine: null,
+  startMarker: null,
+  trailName: '',
+  pendingTrail: null,    // unsaved summary trail
+  elevGain: 0,
+  maxElev: -Infinity,
+  minElev: Infinity,
+};
+
+// -------- IndexedDB --------
+const DB_NAME = 'EnjoyTrails';
+const DB_VERSION = 1;
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('trails')) {
+        const store = d.createObjectStore('trails', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('date', 'date', { unique: false });
+      }
+    };
+    req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+    req.onerror = (e) => { reject(e.target.error); };
+  });
+}
+
+function dbGetAll() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trails', 'readonly');
+    const store = tx.objectStore('trails');
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function dbAdd(trail) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trails', 'readwrite');
+    const store = tx.objectStore('trails');
+    const req = store.add(trail);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function dbDelete(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trails', 'readwrite');
+    const store = tx.objectStore('trails');
+    const req = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// -------- Map --------
+const map = L.map('map', {
+  zoomControl: false,
+  attributionControl: true,
+}).setView([37.7749, -122.4194], 14);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+  detectRetina: true,
+}).addTo(map);
+
+// -------- Utilities --------
+function haversine(p1, p2) {
+  const R = 6371000;
+  const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+  const dLng = (p2.lng - p1.lng) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(p1.lat*Math.PI/180) * Math.cos(p2.lat*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function formatDistance(m) {
+  return m >= 1000 ? (m/1000).toFixed(2) + ' km' : m.toFixed(0) + ' m';
+}
+
+function formatTime(ms) {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function formatPace(ms, m) {
+  if (m < 10) return '—';
+  const minPerKm = (ms / 60000) / (m / 1000);
+  return Math.round(minPerKm) + "'" + Math.round((minPerKm % 1) * 60) + '" /km';
+}
+
+function getAlt(point) {
+  return point.alt != null && isFinite(point.alt) ? point.alt : null;
+}
+
+// -------- Elevation Chart --------
+function drawElevChart(points, canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = (rect.width - 16) * dpr;
+  canvas.height = (rect.height - 16) * dpr;
+  canvas.style.width = (rect.width - 16) + 'px';
+  canvas.style.height = (rect.height - 16) + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = canvas.width / dpr;
+  const h = canvas.height / dpr;
+
+  const alts = points.map(p => getAlt(p)).filter(a => a !== null);
+  if (alts.length < 2) {
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Elevation data unavailable', w/2, h/2);
+    return;
+  }
+
+  const minA = Math.min(...alts);
+  const maxA = Math.max(...alts);
+  const range = Math.max(maxA - minA, 5);
+  const pad = 8;
+
+  // gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(76,175,80,0.5)');
+  grad.addColorStop(1, 'rgba(76,175,80,0.05)');
+
+  // line
+  ctx.beginPath();
+  let started = false;
+  let prevX = 0, prevY = 0;
+
+  points.forEach((p, i) => {
+    const alt = getAlt(p);
+    if (alt === null) return;
+    const x = pad + (i / (points.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((alt - minA) / range) * (h - pad * 2);
+    if (!started) {
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+    prevX = x; prevY = y;
+  });
+
+  // fill area
+  const lastIdx = points.length - 1;
+  let lastX = pad + (lastIdx / (points.length - 1)) * (w - pad * 2);
+  ctx.lineTo(lastX, h - pad);
+  ctx.lineTo(pad + 0, h - pad);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // stroke line
+  ctx.beginPath();
+  started = false;
+  points.forEach((p, i) => {
+    const alt = getAlt(p);
+    if (alt === null) return;
+    const x = pad + (i / (points.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((alt - minA) / range) * (h - pad * 2);
+    if (!started) { ctx.moveTo(x, y); started = true; }
+    else { ctx.lineTo(x, y); }
+  });
+  ctx.strokeStyle = '#4CAF50';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // labels
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.round(maxA) + 'm', 2, 10);
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.round(minA) + 'm', 2, h - 4);
+}
+
+// -------- Location / GPS --------
+function onPositionUpdate(pos) {
+  const { latitude, longitude, altitude, accuracy } = pos.coords;
+  const latlng = [latitude, longitude];
+
+  // Update user marker
+  if (!STATE.userMarker) {
+    STATE.userMarker = L.circleMarker(latlng, {
+      radius: 8, color: '#4CAF50', fillColor: '#4CAF50',
+      fillOpacity: 0.9, weight: 3, opacity: 0.8,
+    }).addTo(map);
+    STATE.accuracyCircle = L.circle(latlng, {
+      radius: accuracy || 50,
+      color: '#4CAF50', fillColor: '#4CAF50', fillOpacity: 0.08, weight: 1, opacity: 0.2,
+    }).addTo(map);
+  } else {
+    STATE.userMarker.setLatLng(latlng);
+    STATE.accuracyCircle.setLatLng(latlng);
+    STATE.accuracyCircle.setRadius(accuracy || 50);
+  }
+
+  // Update idle elevation display
+  if (!STATE.recording) {
+    const alt = altitude != null && isFinite(altitude) ? Math.round(altitude) + ' m' : '—';
+    document.getElementById('elevIdle').textContent = 'Elevation: ' + alt;
+  }
+
+  // Recording logic
+  if (STATE.recording && !STATE.paused) {
+    const point = { lat: latitude, lng: longitude, alt: altitude, time: Date.now() };
+    STATE.trailPoints.push(point);
+
+    // Update trail line
+    const latlngs = STATE.trailPoints.map(p => [p.lat, p.lng]);
+    if (!STATE.trailLine) {
+      STATE.trailLine = L.polyline(latlngs, {
+        color: '#4CAF50', weight: 4, opacity: 0.85,
+        lineCap: 'round', lineJoin: 'round',
+      }).addTo(map);
+      // Start marker
+      STATE.startMarker = L.circleMarker(latlngs[0], {
+        radius: 6, color: '#81C784', fillColor: '#81C784',
+        fillOpacity: 0.8, weight: 2,
+      }).addTo(map);
+    } else {
+      STATE.trailLine.setLatLngs(latlngs);
+    }
+
+    // Elevation stats
+    const altVal = altitude != null && isFinite(altitude) ? altitude : null;
+    if (altVal !== null) {
+      if (altVal > STATE.maxElev) STATE.maxElev = altVal;
+      if (altVal < STATE.minElev) STATE.minElev = altVal;
+    }
+
+    // Update UI stats
+    updateRecUI();
+    map.fitBounds(STATE.trailLine.getBounds().pad(0.3), { animate: true, maxZoom: 16 });
+  } else if (!STATE.recording) {
+    map.panTo(latlng, { animate: true, duration: 0.5 });
+  }
+}
+
+function onPositionError(err) {
+  console.warn('GPS error:', err.message);
+  if (err.code === 1) { // PERMISSION_DENIED
+    document.getElementById('geoNotice').style.display = 'block';
+  }
+}
+
+function startWatching() {
+  if ('geolocation' in navigator) {
+    STATE.watchId = navigator.geolocation.watchPosition(onPositionUpdate, onPositionError, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 3000,
+    });
+    // Also get immediate position
+    navigator.geolocation.getCurrentPosition(onPositionUpdate, onPositionError, {
+      enableHighAccuracy: true,
+      timeout: 5000,
+    });
+  } else {
+    document.getElementById('geoNotice').querySelector('.msg').textContent = 'GPS not available on this device.';
+    document.getElementById('geoNotice').style.display = 'block';
+  }
+}
+
+// -------- Recording Timer --------
+let timerInterval = null;
+
+function startTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    if (STATE.recording && !STATE.paused) {
+      updateRecUI();
+    }
+  }, 1000);
+}
+
+function updateRecUI() {
+  const pts = STATE.trailPoints;
+  if (pts.length < 2) return;
+
+  // Distance
+  let totalDist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    totalDist += haversine(pts[i-1], pts[i]);
+  }
+  document.getElementById('recDist').textContent = totalDist >= 1000 ? (totalDist/1000).toFixed(2) : totalDist.toFixed(0);
+  if (document.getElementById('recDist').textContent.endsWith('.00') && totalDist < 1000) {
+    document.getElementById('recDist').textContent = totalDist.toFixed(0);
+  }
+
+  // Time
+  if (STATE.startTime) {
+    document.getElementById('recTime').textContent = formatTime(Date.now() - STATE.startTime);
+  }
+
+  // Elevation
+  const last = pts[pts.length-1];
+  const alt = getAlt(last);
+  document.getElementById('recElev').innerHTML = alt !== null ? Math.round(alt) + ' <span class="unit">m</span>' : '— <span class="unit">m</span>';
+}
+
+// -------- Core Actions --------
+function startRecording() {
+  if (STATE.recording) return;
+
+  STATE.recording = true;
+  STATE.paused = false;
+  STATE.trailPoints = [];
+  STATE.startTime = Date.now();
+  STATE.maxElev = -Infinity;
+  STATE.minElev = Infinity;
+  STATE.elevGain = 0;
+  STATE.trailLine = null;
+  STATE.startMarker = null;
+  STATE.trailName = '';
+  STATE.pendingTrail = null;
+
+  // Get current position to start
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const { latitude, longitude, altitude } = pos.coords;
+    STATE.trailPoints.push({ lat: latitude, lng: longitude, alt: altitude, time: Date.now() });
+    const latlng = [latitude, longitude];
+    STATE.trailLine = L.polyline([latlng], {
+      color: '#4CAF50', weight: 4, opacity: 0.85,
+      lineCap: 'round', lineJoin: 'round',
+    }).addTo(map);
+    STATE.startMarker = L.circleMarker(latlng, {
+      radius: 6, color: '#81C784', fillColor: '#81C784',
+      fillOpacity: 0.8, weight: 2,
+    }).addTo(map);
+    updateRecUI();
+  }, null, { enableHighAccuracy: true, timeout: 5000 });
+
+  // Switch UI
+  document.getElementById('idleState').style.display = 'none';
+  document.getElementById('summaryState').classList.remove('active');
+  document.getElementById('summaryState').style.display = 'none';
+  document.getElementById('recordingState').style.display = 'block';
+  document.getElementById('recordingState').classList.add('active');
+  document.getElementById('btnHistory').style.display = 'none';
+
+  startTimer();
+}
+
+function togglePause() {
+  STATE.paused = !STATE.paused;
+  const btn = document.getElementById('btnPause');
+  if (STATE.paused) {
+    btn.textContent = '▶';
+    btn.classList.add('paused');
+  } else {
+    btn.textContent = '⏸';
+    btn.classList.remove('paused');
+  }
+}
+
+function finishTrail() {
+  STATE.recording = false;
+  STATE.paused = false;
+  clearInterval(timerInterval);
+
+  if (STATE.trailPoints.length < 2) {
+    resetToIdle();
+    return;
+  }
+
+  const pts = STATE.trailPoints;
+  let totalDist = 0;
+  for (let i = 1; i < pts.length; i++) {
+    totalDist += haversine(pts[i-1], pts[i]);
+  }
+  const elapsed = Date.now() - STATE.startTime;
+  const elevValues = pts.map(p => getAlt(p)).filter(a => a !== null);
+
+  STATE.pendingTrail = {
+    name: 'Unnamed Trail',
+    date: new Date().toISOString(),
+    points: pts,
+    distance: totalDist,
+    duration: elapsed,
+    maxElev: elevValues.length > 0 ? Math.max(...elevValues) : null,
+    minElev: elevValues.length > 0 ? Math.min(...elevValues) : null,
+    pace: formatPace(elapsed, totalDist),
+  };
+
+  // Show summary
+  document.getElementById('recordingState').style.display = 'none';
+  document.getElementById('recordingState').classList.remove('active');
+  document.getElementById('summaryState').style.display = 'block';
+  document.getElementById('summaryState').classList.add('active');
+  document.getElementById('btnHistory').style.display = 'block';
+
+  document.getElementById('sumDist').textContent = formatDistance(totalDist);
+  document.getElementById('sumTime').textContent = formatTime(elapsed);
+  document.getElementById('sumElev').textContent = STATE.pendingTrail.maxElev !== null ? Math.round(STATE.pendingTrail.maxElev) + ' m' : '—';
+  document.getElementById('sumPace').textContent = STATE.pendingTrail.pace;
+
+  // Draw elevation chart
+  setTimeout(() => drawElevChart(pts, 'elevChart'), 100);
+}
+
+function saveTrail() {
+  if (!STATE.pendingTrail) return;
+  const trail = {
+    ...STATE.pendingTrail,
+    name: STATE.trailName || 'Unnamed Trail',
+  };
+  dbAdd(trail).then(() => {
+    resetToIdle();
+  }).catch((err) => {
+    alert('Failed to save: ' + err.message);
+  });
+}
+
+function discardTrail() {
+  // Remove trail line and markers from map
+  if (STATE.trailLine) { map.removeLayer(STATE.trailLine); STATE.trailLine = null; }
+  if (STATE.startMarker) { map.removeLayer(STATE.startMarker); STATE.startMarker = null; }
+  STATE.pendingTrail = null;
+  STATE.trailPoints = [];
+  resetToIdle();
+}
+
+function resetToIdle() {
+  document.getElementById('recordingState').style.display = 'none';
+  document.getElementById('recordingState').classList.remove('active');
+  document.getElementById('summaryState').style.display = 'none';
+  document.getElementById('summaryState').classList.remove('active');
+  document.getElementById('idleState').style.display = 'block';
+  document.getElementById('btnHistory').style.display = 'block';
+  STATE.recording = false;
+  STATE.paused = false;
+  STATE.trailPoints = [];
+}
+
+// -------- Name Modal --------
+function showNameModal() {
+  document.getElementById('nameModal').classList.add('active');
+  document.getElementById('trailNameInput').value = STATE.trailName || '';
+  setTimeout(() => document.getElementById('trailNameInput').focus(), 200);
+}
+
+function hideNameModal() {
+  document.getElementById('nameModal').classList.remove('active');
+}
+
+function confirmName() {
+  const name = document.getElementById('trailNameInput').value.trim();
+  STATE.trailName = name || 'Unnamed Trail';
+  hideNameModal();
+}
+
+// -------- History --------
+function showHistory() {
+  if (STATE.recording) return;
+  dbGetAll().then((trails) => {
+    const list = document.getElementById('historyList');
+    if (trails.length === 0) {
+      list.innerHTML = '<div class="historyEmpty"><div class="big">🥾</div>No trails saved yet.<br>Start your first walk!</div>';
+    } else {
+      trails.sort((a, b) => new Date(b.date) - new Date(a.date));
+      list.innerHTML = trails.map(t => `
+        <div class="historyItem" onclick="viewTrail(${t.id})">
+          <div class="hIcon">🥾</div>
+          <div class="hInfo">
+            <div class="hName">${escapeHtml(t.name)}</div>
+            <div class="hMeta">${formatDate(t.date)} · ${formatTime(t.duration)}</div>
+          </div>
+          <div class="hDist">${formatDistance(t.distance)}</div>
+        </div>
+      `).join('');
+    }
+    document.getElementById('idleState').style.display = 'none';
+    document.getElementById('summaryState').style.display = 'none';
+    document.getElementById('summaryState').classList.remove('active');
+    document.getElementById('historyState').style.display = 'block';
+    document.getElementById('historyState').classList.add('active');
+  });
+}
+
+function hideHistory() {
+  document.getElementById('historyState').style.display = 'none';
+  document.getElementById('historyState').classList.remove('active');
+  document.getElementById('idleState').style.display = 'block';
+}
+
+function viewTrail(id) {
+  const tx = db.transaction('trails', 'readonly');
+  const store = tx.objectStore('trails');
+  const req = store.get(id);
+  req.onsuccess = () => {
+    const t = req.result;
+    if (!t) return;
+    hideHistory();
+
+    // Clear any existing trail line
+    if (STATE.trailLine) { map.removeLayer(STATE.trailLine); STATE.trailLine = null; }
+    if (STATE.startMarker) { map.removeLayer(STATE.startMarker); STATE.startMarker = null; }
+
+    // Draw on map
+    const latlngs = t.points.map(p => [p.lat, p.lng]);
+    STATE.trailLine = L.polyline(latlngs, {
+      color: '#4CAF50', weight: 4, opacity: 0.85,
+      lineCap: 'round', lineJoin: 'round',
+    }).addTo(map);
+    STATE.startMarker = L.circleMarker(latlngs[0], {
+      radius: 6, color: '#81C784', fillColor: '#81C784',
+      fillOpacity: 0.8, weight: 2,
+    }).addTo(map);
+    // End marker
+    L.circleMarker(latlngs[latlngs.length-1], {
+      radius: 6, color: '#ef5350', fillColor: '#ef5350',
+      fillOpacity: 0.8, weight: 2,
+    }).addTo(map);
+
+    map.fitBounds(STATE.trailLine.getBounds().pad(0.3), { animate: true });
+
+    // Show in bottom panel
+    document.getElementById('idleState').style.display = 'none';
+    document.getElementById('summaryState').style.display = 'block';
+    document.getElementById('summaryState').classList.add('active');
+    document.getElementById('sumDist').textContent = formatDistance(t.distance);
+    document.getElementById('sumTime').textContent = formatTime(t.duration);
+    document.getElementById('sumElev').textContent = t.maxElev !== null ? Math.round(t.maxElev) + ' m' : '—';
+    document.getElementById('sumPace').textContent = t.pace || '—';
+    document.querySelector('.summaryTitle').textContent = '🥾 ' + t.name;
+    setTimeout(() => drawElevChart(t.points, 'elevChart'), 100);
+  };
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  const opts = { month: 'short', day: 'numeric' };
+  return d.toLocaleDateString('en-US', opts);
+}
+
+// -------- Init --------
+openDB().then(() => {
+  startWatching();
+  document.getElementById('btnHistory').style.display = 'block';
+}).catch((err) => {
+  console.error('DB open failed:', err);
+  // Still start GPS
+  startWatching();
+  document.getElementById('btnHistory').style.display = 'block';
+});
+</script>
+</body>
+</html>
