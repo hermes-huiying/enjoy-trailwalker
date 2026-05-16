@@ -70,10 +70,23 @@
     box-shadow: 0 4px 20px rgba(76,175,80,0.35);
     display: flex; align-items: center; justify-content: center; gap: 10px;
   }
-  .btnStart:active { transform: scale(0.97); }
-  .btnStart .icon { font-size: 22px; }
+.btnStart:active { transform: scale(0.97); }
+.btnStart .icon { font-size: 22px; }
 
-  /* ===== RECORDING STATE ===== */
+/* ===== DATA ACTIONS (export/import) ===== */
+.dataActions {
+  display: flex; gap: 8px; margin-top: 10px;
+}
+.dataActions button {
+  flex: 1; padding: 10px; border: none; border-radius: 12px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5);
+  transition: background 0.15s, color 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.dataActions button:active { background: rgba(255,255,255,0.12); }
+
+/* ===== RECORDING STATE ===== */
   #recordingState { display: none; }
   #recordingState.active { display: block; }
 
@@ -261,6 +274,10 @@
     <button class="btnStart" onclick="startRecording()">
       <span class="icon">⏺</span> Start Trail
     </button>
+    <div class="dataActions">
+      <button onclick="exportData()">📤 Export</button>
+      <button onclick="document.getElementById('importInput').click()">📥 Import</button>
+    </div>
   </div>
 
   <!-- RECORDING -->
@@ -330,6 +347,8 @@
     </div>
   </div>
 </div>
+
+<input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
 
 <script>
 // ============================================================
@@ -897,6 +916,73 @@ function formatDate(iso) {
   const d = new Date(iso);
   const opts = { month: 'short', day: 'numeric' };
   return d.toLocaleDateString('en-US', opts);
+}
+
+// -------- Export / Import --------
+function exportData() {
+  dbGetAll().then((trails) => {
+    if (trails.length === 0) {
+      alert('No trails to export yet. Go for a walk first! 🥾');
+      return;
+    }
+    // Strip internal ids before export
+    const data = trails.map(t => {
+      const { id, ...rest } = t;
+      return rest;
+    });
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), trails: data }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'enjoy-trails-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      const trails = data.trails || data;
+      if (!Array.isArray(trails) || trails.length === 0) {
+        alert('Invalid file format. Please export from Enjoy first.');
+        return;
+      }
+      let count = 0;
+      const promises = trails.map(t => {
+        // Ensure required fields
+        if (!t.points || !Array.isArray(t.points) || t.points.length < 2) return null;
+        return dbAdd({
+          name: t.name || 'Imported Trail',
+          date: t.date || new Date().toISOString(),
+          points: t.points,
+          distance: t.distance || 0,
+          duration: t.duration || 0,
+          maxElev: t.maxElev || null,
+          minElev: t.minElev || null,
+          pace: t.pace || '—',
+        }).then(() => { count++; });
+      }).filter(Boolean);
+      Promise.all(promises).then(() => {
+        alert('✅ Imported ' + count + ' trail(s) successfully!');
+        // Refresh history if visible
+        if (document.getElementById('historyState').classList.contains('active')) {
+          showHistory();
+        }
+      });
+    } catch (err) {
+      alert('Failed to import: ' + err.message + '\n\nMake sure you\'re using a valid Enjoy export file.');
+    }
+  };
+  reader.readAsText(file);
+  // Reset input so same file can be re-selected
+  event.target.value = '';
 }
 
 // -------- Init --------
