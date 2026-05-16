@@ -1,0 +1,11 @@
+R_DEF: Internal format may change without notice
+local
+color enjoy_bg
+color enjoy_dark_green
+color enjoy_green
+color enjoy_red
+color enjoy_surface
+drawable ic_launcher_foreground
+mipmap ic_launcher
+string app_name
+style Theme.Enjoy

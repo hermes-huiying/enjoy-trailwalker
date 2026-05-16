@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.enjoy.app-debug-59:/mipmap-hdpi_ic_launcher.xml.flat",
+        "source": "com.enjoy.app-main-61:/mipmap-hdpi/ic_launcher.xml"
+    },
+    {
+        "merged": "com.enjoy.app-debug-59:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.enjoy.app-main-61:/drawable/ic_launcher_foreground.xml"
+    }
+]

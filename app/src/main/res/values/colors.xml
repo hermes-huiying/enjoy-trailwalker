@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="enjoy_green">#FF4CAF50</color>
+    <color name="enjoy_dark_green">#FF1B5E20</color>
+    <color name="enjoy_bg">#FF0A0A0A</color>
+    <color name="enjoy_surface">#FF1C1C1E</color>
+    <color name="enjoy_red">#FFE53935</color>
+</resources>

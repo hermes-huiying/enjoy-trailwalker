@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="enjoy_bg">#FF0A0A0A</color>
+    <color name="enjoy_dark_green">#FF1B5E20</color>
+    <color name="enjoy_green">#FF4CAF50</color>
+    <color name="enjoy_red">#FFE53935</color>
+    <color name="enjoy_surface">#FF1C1C1E</color>
+    <string name="app_name">Enjoy</string>
+    <style name="Theme.Enjoy" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/enjoy_bg</item>
+    </style>
+</resources>
